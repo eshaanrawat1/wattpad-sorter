@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Wattpad Views Sorter",
+  "version": "0.1.0",
+  "description": "Add sorting by views to Wattpad story cards.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.wattpad.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

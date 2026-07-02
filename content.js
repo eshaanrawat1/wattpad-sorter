@@ -7,607 +7,206 @@
     sortDir: 'desc',
     sortActive: false,
     listContainer: null,
-    observer: null,
-    menuObserver: null,
-    dropdownObserver: null,
+    cardObserver: null,
     isSorting: false,
-    pendingScan: null,
-    toggleBootTimer: null
+    pollTimer: null,
   };
 
+  var CYCLE = { neutral: 'desc', desc: 'asc', asc: 'neutral' };
+  var ICONS = {
+    neutral: '<i class="ti ti-arrows-sort" aria-hidden="true"></i>',
+    desc:    '<i class="ti ti-sort-descending" aria-hidden="true"></i>',
+    asc:     '<i class="ti ti-sort-ascending" aria-hidden="true"></i>',
+  };
+
+  var lastViewState = 'neutral';
+
+  // Parsing
+
   function parseReadCount(text) {
-    if (!text) return null;
-    var match = String(text).match(READS_REGEX);
+    var match = text && String(text).match(READS_REGEX);
     if (!match) return null;
-    var numeric = match[1].replace(/,/g, '');
-    var value = parseInt(numeric, 10);
-    return Number.isNaN(value) ? null : value;
+    var n = parseInt(match[1].replace(/,/g, ''), 10);
+    return Number.isNaN(n) ? null : n;
   }
 
   function findReadSpans(rootNode) {
-    var scope = rootNode || (root && root.document) || null;
-    if (!scope || !scope.querySelectorAll) return [];
-    var spans = Array.prototype.slice.call(
-      scope.querySelectorAll('span.sr-only')
-    );
-    return spans.filter(function (span) {
-      return parseReadCount(span.textContent) !== null;
-    });
+    if (!rootNode || !rootNode.querySelectorAll) return [];
+    return Array.from(rootNode.querySelectorAll('span.sr-only'))
+      .filter(function (s) { return parseReadCount(s.textContent) !== null; });
   }
 
-  function getCardElement(readSpan) {
-    if (!readSpan || !readSpan.closest) return null;
-    return (
-      readSpan.closest('li.FVPgf') ||
-      readSpan.closest(
-        "[data-qa='story-card'], article, .story-card, .card"
-      ) ||
-      readSpan.closest('li') ||
-      readSpan.parentElement
-    );
+  // DOM helpers
+
+  function getCard(span) {
+    return span.closest('li.FVPgf') || span.closest('li') || span.parentElement;
   }
 
-  function getListContainer(card) {
-    if (!card || !card.closest) return null;
-    return (
-      card.closest('ul.t9bBC') ||
-      card.closest("[data-qa='story-list'], ul, ol, [role='list']") ||
-      card.parentElement ||
-      null
-    );
+  function getContainer(card) {
+    return card && (card.closest('ul.t9bBC') || card.parentElement);
   }
 
-  function indexCardsFromSpans(readSpans) {
-    readSpans.forEach(function (span) {
+  // Indexing
+
+  function indexCards(spans) {
+    spans.forEach(function (span) {
       var count = parseReadCount(span.textContent);
       if (count === null) return;
-      var card = getCardElement(span);
+      var card = getCard(span);
       if (!card) return;
-      if (!card.dataset.wrReads) {
-        card.dataset.wrReads = String(count);
-      }
-      if (!card.dataset.wrIndex) {
-        card.dataset.wrIndex = String(STATE.nextIndex++);
-      }
-      var container = getListContainer(card);
-      if (!STATE.listContainer || (container && !STATE.listContainer.contains(card))) {
+      if (!card.dataset.wrReads) card.dataset.wrReads = count;
+      if (!card.dataset.wrIndex) card.dataset.wrIndex = STATE.nextIndex++;
+      var container = getContainer(card);
+      if (container && (!STATE.listContainer || !STATE.listContainer.contains(card))) {
         STATE.listContainer = container;
       }
     });
   }
 
-  function sortCards(cards, direction) {
-    if (!cards || !cards.length) return [];
-    var dir = direction === 'asc' ? 1 : -1;
-    return cards.sort(function (a, b) {
-      var ra = Number(a.dataset.wrReads);
-      var rb = Number(b.dataset.wrReads);
-      if (ra < rb) return -1 * dir;
-      if (ra > rb) return 1 * dir;
-      var ia = Number(a.dataset.wrIndex);
-      var ib = Number(b.dataset.wrIndex);
-      return ia - ib;
-    });
-  }
-
-  function getCardsInContainer(container) {
-    if (!container || !container.querySelectorAll) return [];
-    var nodes = Array.prototype.slice.call(
-      container.querySelectorAll("[data-wr-reads]")
-    );
-    return nodes;
-  }
+  // Sorting
 
   function applySort() {
-    if (!STATE.listContainer) return;
-    var cards = getCardsInContainer(STATE.listContainer);
+    if (!STATE.listContainer || STATE.isSorting) return;
+    var cards = Array.from(STATE.listContainer.querySelectorAll('[data-wr-reads]'));
     if (!cards.length) return;
-    if (STATE.isSorting) return;
     STATE.isSorting = true;
-    if (STATE.observer) STATE.observer.disconnect();
-    var sorted = sortCards(cards, STATE.sortDir);
-    sorted.forEach(function (card) {
-      STATE.listContainer.appendChild(card);
+    if (STATE.cardObserver) STATE.cardObserver.disconnect();
+    var dir = STATE.sortDir === 'asc' ? 1 : -1;
+    cards.sort(function (a, b) {
+      var diff = (Number(a.dataset.wrReads) - Number(b.dataset.wrReads)) * dir;
+      return diff !== 0 ? diff : Number(a.dataset.wrIndex) - Number(b.dataset.wrIndex);
     });
-    var observeTarget =
-      (root && root.document && root.document.body) || STATE.listContainer;
-    if (STATE.observer && observeTarget) {
-      STATE.observer.observe(observeTarget, {
-        childList: true,
-        subtree: true
-      });
+    cards.forEach(function (c) { STATE.listContainer.appendChild(c); });
+    if (STATE.cardObserver) {
+      STATE.cardObserver.observe(root.document.body, { childList: true, subtree: true });
     }
     STATE.isSorting = false;
   }
 
-  function ensureStyles(doc) {
-    if (!doc || doc.getElementById('wr-sort-styles')) return;
-    var style = doc.createElement('style');
-    style.id = 'wr-sort-styles';
-    style.textContent =
-      '.wr-sort-button{' +
-      'margin-left:8px;' +
-      'padding:6px 10px;' +
-      'border:1px solid #c7c7c7;' +
-      'background:#fff;' +
-      'border-radius:16px;' +
-      'font-size:12px;' +
-      'line-height:1;' +
-      'cursor:pointer;' +
-      '}' +
-      '.wr-sort-button:hover{border-color:#8a8a8a;}' +
-      '.wr-sort-item{' +
-      'padding:8px 12px;' +
-      'cursor:pointer;' +
-      'list-style:none;' +
-      '}' +
-      '.wr-sort-item:hover{background:#f2f2f2;}' +
-      '.wr-sort-arrow{' +
-      'margin-left:6px;' +
-      'font-size:12px;' +
-      'cursor:pointer;' +
-      'user-select:none;' +
-      '}' +
-      '.wr-sort-arrow.hidden{display:none;}' +
-      '.wr-sort-bar{' +
-      'display:inline-flex !important;' +
-      'align-items:center !important;' +
-      'gap:6px;' +
-      'flex-wrap:nowrap;' +
-      'white-space:nowrap;' +
-      '}' +
-      '.wr-sort-controls{' +
-      'display:inline-flex;' +
-      'align-items:center;' +
-      'gap:6px;' +
-      'flex-wrap:nowrap;' +
-      '}' +
-      '.wr-views-toggle{' +
-      'min-width:22px;' +
-      'height:22px;' +
-      'padding:0 6px;' +
-      'border:1px solid #ff6122;' +
-      'background:rgba(255,97,34,0.08);' +
-      'color:#ff6122;' +
-      'border-radius:999px;' +
-      'font-size:11px;' +
-      'line-height:22px;' +
-      'text-align:center;' +
-      'cursor:pointer;' +
-      '}' +
-      '.wr-views-toggle:hover{' +
-      'background:rgba(255,97,34,0.16);' +
-      '}' +
-      '.wr-views-toggle:active{' +
-      'transform:translateY(1px);' +
-      '}';
-    doc.head.appendChild(style);
-  }
-
-  function findSortBar(doc) {
-    return (
-      doc.querySelector("[data-testid='sort-by-dropdown']") ||
-      doc.querySelector('#sort-by-dropdown') ||
-      doc.querySelector("[data-qa='sort-bar']") ||
-      doc.querySelector('.filters') ||
-      doc.querySelector('.sorts') ||
-      null
-    );
-  }
-
-  function findSortButton(sortBar) {
-    if (!sortBar) return null;
-    return sortBar.querySelector('button') || null;
-  }
-
-  function getSortLabelNode(sortButton) {
-    if (!sortButton) return null;
-    var node = sortButton.querySelector('#wr-sort-label');
-    if (!node) {
-      var caret =
-        sortButton.querySelector("[data-testid='caret']") || null;
-      Array.prototype.slice
-        .call(sortButton.childNodes)
-        .forEach(function (child) {
-          if (child === caret) return;
-          if (child.id === 'wr-sort-label') return;
-          if (child.id === 'wr-sort-arrow') return;
-          sortButton.removeChild(child);
-        });
-      node = document.createElement('span');
-      node.id = 'wr-sort-label';
-      if (caret) {
-        sortButton.insertBefore(node, caret);
-      } else {
-        sortButton.insertBefore(node, sortButton.firstChild);
-      }
-    }
-    return node;
-  }
-
-  function getArrowNode(sortButton) {
-    if (!sortButton) return null;
-    var arrow = sortButton.querySelector('#wr-sort-arrow');
-    if (!arrow) {
-      arrow = document.createElement('span');
-      arrow.id = 'wr-sort-arrow';
-      arrow.className = 'wr-sort-arrow hidden';
-      arrow.textContent = '▼';
-      var caret =
-        sortButton.querySelector("[data-testid='caret']") || null;
-      if (caret) {
-        sortButton.insertBefore(arrow, caret);
-      } else {
-        sortButton.appendChild(arrow);
-      }
-    }
-    return arrow;
-  }
-
-  function setHeaderSelection(sortButton, label) {
-    if (!sortButton) return;
-    var labelNode = getSortLabelNode(sortButton);
-    labelNode.textContent = 'Sort by: ' + label + ' ';
-  }
-
-  function setArrowVisible(sortButton, visible) {
-    var arrow = getArrowNode(sortButton);
-    if (!arrow) return;
-    arrow.classList.toggle('hidden', !visible);
-    arrow.textContent = STATE.sortDir === 'desc' ? '▼' : '▲';
-  }
-
-  function applyViewsState(button) {
-    if (!button) return;
-    var state = button.dataset.wrViewState || 'desc';
-    if (state === 'desc') {
-      button.textContent = '▼';
-      STATE.sortDir = 'desc';
-      STATE.sortActive = true;
-      scanAndMaybeSort(root.document);
-      applySort();
-      return;
-    }
-    if (state === 'asc') {
-      button.textContent = '▲';
-      STATE.sortDir = 'asc';
-      STATE.sortActive = true;
-      scanAndMaybeSort(root.document);
-      applySort();
-      return;
-    }
-    button.textContent = '⇅';
-    STATE.sortActive = false;
-    scanAndMaybeSort(root.document);
-    restoreOriginalOrder();
-  }
-
-  function restoreOriginalOrder() {
+  function restoreOrder() {
     if (!STATE.listContainer) return;
-    var cards = getCardsInContainer(STATE.listContainer);
-    if (!cards.length) return;
-    cards.sort(function (a, b) {
-      var ia = Number(a.dataset.wrIndex);
-      var ib = Number(b.dataset.wrIndex);
-      return ia - ib;
-    });
-    cards.forEach(function (card) {
-      STATE.listContainer.appendChild(card);
-    });
+    Array.from(STATE.listContainer.querySelectorAll('[data-wr-reads]'))
+      .sort(function (a, b) { return Number(a.dataset.wrIndex) - Number(b.dataset.wrIndex); })
+      .forEach(function (c) { STATE.listContainer.appendChild(c); });
   }
 
-  function cycleViewsState(button) {
-    var current = button.dataset.wrViewState || 'desc';
-    var next = current === 'desc' ? 'asc' : current === 'asc' ? 'neutral' : 'desc';
-    button.dataset.wrViewState = next;
-    applyViewsState(button);
-  }
-
-  function injectViewsToggle(doc) {
-    if (!doc || doc.getElementById('wr-views-toggle')) return;
-    ensureStyles(doc);
-    var sortBar = findSortBar(doc);
-    if (!sortBar) return;
-    var sortButton = findSortButton(sortBar);
-    if (!sortButton) return;
-    sortBar.classList.add('wr-sort-bar');
-    var controls = sortBar.querySelector('#wr-sort-controls');
-    if (!controls) {
-      controls = doc.createElement('span');
-      controls.id = 'wr-sort-controls';
-      controls.className = 'wr-sort-controls';
-      sortBar.insertBefore(controls, sortButton);
-      controls.appendChild(sortButton);
-    } else if (!controls.contains(sortButton)) {
-      controls.appendChild(sortButton);
-    }
-    var button = doc.createElement('button');
-    button.id = 'wr-views-toggle';
-    button.className = 'wr-views-toggle';
-    button.type = 'button';
-    button.title = 'Sort by Views';
-    button.dataset.wrViewState = 'desc';
-    button.textContent = '▼';
-    button.addEventListener('click', function (event) {
-      event.preventDefault();
-      cycleViewsState(button);
-    });
-    controls.insertBefore(button, sortButton);
-  }
-
-  function ensureViewsToggle(doc) {
-    if (!doc) return;
-    if (doc.getElementById('wr-views-toggle')) return;
-    injectViewsToggle(doc);
-  }
-
-  function bootstrapViewsToggle(doc) {
-    if (!doc || STATE.toggleBootTimer) return;
-    var attempts = 0;
-    STATE.toggleBootTimer = setInterval(function () {
-      attempts += 1;
-      ensureViewsToggle(doc);
-      if (doc.getElementById('wr-views-toggle') || attempts >= 40) {
-        clearInterval(STATE.toggleBootTimer);
-        STATE.toggleBootTimer = null;
-      }
-    }, 250);
-  }
-
-  function attachArrowToggle(sortButton) {
-    var arrow = getArrowNode(sortButton);
-    if (!arrow || arrow.dataset.wrBound) return;
-    arrow.dataset.wrBound = 'true';
-    arrow.addEventListener('click', function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!STATE.sortActive) return;
-      STATE.sortDir = STATE.sortDir === 'desc' ? 'asc' : 'desc';
-      arrow.textContent = STATE.sortDir === 'desc' ? '▼' : '▲';
-      applySort();
-    });
-  }
-
-  function getDropdownList(sortBar, doc) {
-    if (sortBar) {
-      var local =
-        sortBar.querySelector('#sortby-dropdown') ||
-        sortBar.querySelector('ul');
-      if (local) return local;
-    }
-    if (doc) {
-      return doc.querySelector('#sortby-dropdown');
-    }
-    return null;
-  }
-
-  function cloneCheckedIcon(dropdownList) {
-    if (!dropdownList) return null;
-    var existing = dropdownList.querySelector('[data-testid="checked-icon"]');
-    if (!existing) return null;
-    return existing.cloneNode(true);
-  }
-
-  function setCheckedOnViews(dropdownList, enabled) {
-    if (!dropdownList) return;
-    var allChecks = dropdownList.querySelectorAll(
-      '[data-testid="checked-icon"]'
-    );
-    Array.prototype.forEach.call(allChecks, function (check) {
-      var inViews = check.closest('#wr-sort-menu-item');
-      if (enabled) {
-        if (!inViews) {
-          check.style.display = 'none';
-          check.dataset.wrHidden = 'true';
-        }
-      } else {
-        if (check.dataset.wrHidden === 'true') {
-          check.style.display = '';
-          delete check.dataset.wrHidden;
-        }
-      }
-    });
-    var viewsCheck = dropdownList.querySelector(
-      '#wr-sort-menu-item [data-testid="checked-icon"]'
-    );
-    if (viewsCheck) {
-      viewsCheck.style.display = enabled ? '' : 'none';
-    }
-  }
-
-  function injectButton(doc) {
-    if (!doc || doc.getElementById('wr-sort-menu-item')) return;
-    ensureStyles(doc);
-    var sortBar = findSortBar(doc);
-    if (!sortBar) return;
-    var sortButton = findSortButton(sortBar);
-    if (sortButton) {
-      attachArrowToggle(sortButton);
-      if (!sortButton.dataset.wrBound) {
-        sortButton.dataset.wrBound = 'true';
-        sortButton.addEventListener('click', function () {
-          setTimeout(function () {
-            injectButton(doc);
-          }, 0);
-          setTimeout(function () {
-            injectButton(doc);
-          }, 100);
-        });
-      }
-    }
-    var dropdownList = getDropdownList(sortBar, doc);
-    if (!dropdownList) return;
-    var link = doc.createElement('a');
-    link.href = '#';
-    link.className = 'WR6Py';
-    var item = doc.createElement('li');
-    item.className = 'loBjy wr-sort-item';
-    item.id = 'wr-sort-menu-item';
-    item.setAttribute('role', 'menuitem');
-    item.setAttribute('tabindex', '0');
-    item.textContent = 'Views';
-    var checkIcon = cloneCheckedIcon(dropdownList);
-    if (checkIcon) {
-      checkIcon.style.display = 'none';
-      checkIcon.classList.add('r4Ayt');
-      item.appendChild(checkIcon);
-    }
-    link.appendChild(item);
-    dropdownList.appendChild(link);
-
-    if (!dropdownList.dataset.wrBound) {
-      dropdownList.dataset.wrBound = 'true';
-      dropdownList.addEventListener('click', function (event) {
-        var li = event.target.closest('li');
-        if (!li) return;
-        if (li.id === 'wr-sort-menu-item') {
-          event.preventDefault();
-          if (!STATE.sortActive) {
-            STATE.sortDir = 'desc';
-          }
-          STATE.sortActive = true;
-          if (sortButton) {
-            setHeaderSelection(sortButton, 'Views');
-            setArrowVisible(sortButton, true);
-          }
-          setCheckedOnViews(dropdownList, true);
-          applySort();
-          return;
-        }
-        STATE.sortActive = false;
-        if (sortButton) {
-          var label = (li.textContent || '').trim() || 'Hot';
-          setHeaderSelection(sortButton, label);
-          setArrowVisible(sortButton, false);
-        }
-        setCheckedOnViews(dropdownList, false);
-      });
-    }
-  }
-
-  function ensureSortMenu(doc) {
-    if (!doc || doc.getElementById('wr-sort-menu-item')) return;
-    var sortBar = findSortBar(doc);
-    if (!sortBar) return;
-    var dropdownList = getDropdownList(sortBar, doc);
-    if (!dropdownList) return;
-    injectButton(doc);
-  }
-
-  function observeMenu(doc) {
-    if (!doc || STATE.menuObserver) return;
-    STATE.menuObserver = new MutationObserver(function (mutations) {
-      mutations.forEach(function (mutation) {
-        Array.prototype.forEach.call(mutation.addedNodes, function (node) {
-          if (!node || !node.querySelectorAll) return;
-          if (node.id === 'sortby-dropdown' || node.querySelector('#sortby-dropdown')) {
-            injectButton(doc);
-            return;
-          }
-          if (node.matches && node.matches("[data-testid='sort-by-dropdown']")) {
-            injectButton(doc);
-            return;
-          }
-        });
-      });
-    });
-    STATE.menuObserver.observe(doc.body, { childList: true, subtree: true });
-  }
-
-  function scanAndMaybeSort(rootNode) {
+  function scanAndSort(rootNode) {
     var spans = findReadSpans(rootNode);
     if (!spans.length) return;
-    indexCardsFromSpans(spans);
+    indexCards(spans);
     if (STATE.sortActive) applySort();
   }
 
-  function observe(doc) {
-    if (!doc || STATE.observer) return;
-    var target = doc.body;
-    if (!target) return;
-    STATE.observer = new MutationObserver(function (mutations) {
-      if (STATE.isSorting) return;
-      if (STATE.pendingScan) {
-        clearTimeout(STATE.pendingScan);
-      }
-      STATE.pendingScan = setTimeout(function () {
-        ensureViewsToggle(doc);
-        mutations.forEach(function (mutation) {
-          Array.prototype.forEach.call(mutation.addedNodes, function (node) {
-            if (!node || !node.querySelectorAll) return;
-            scanAndMaybeSort(node);
-            if (!STATE.listContainer) {
-              var spans = findReadSpans(node);
-              if (spans.length) indexCardsFromSpans(spans);
-            }
-          });
-        });
-      }, 50);
-    });
-    STATE.observer.observe(target, { childList: true, subtree: true });
+  // Styles
+
+  function ensureStyles(doc) {
+    if (doc.getElementById('wr-sort-styles')) return;
+
+    var link = doc.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css';
+    doc.head.appendChild(link);
+
+    var style = doc.createElement('style');
+    style.id = 'wr-sort-styles';
+    style.textContent =
+      '.wr-views-toggle{' +
+        'display:inline-flex;align-items:center;justify-content:center;' +
+        'min-width:26px;height:26px;padding:0;' +
+        'border:1.5px solid #ff6122;background:rgba(255,97,34,.08);' +
+        'color:#ff6122;border-radius:999px;' +
+        'cursor:pointer;vertical-align:middle;margin-left:6px;' +
+      '}' +
+      '.wr-views-toggle:hover{background:rgba(255,97,34,.16);}' +
+      '.wr-views-toggle:active{transform:translateY(1px);}' +
+      '.wr-views-toggle i{font-size:14px;line-height:1;pointer-events:none;}';
+    doc.head.appendChild(style);
   }
 
-  function attachDropdownTrigger(doc) {
-    var sortBar = findSortBar(doc);
+  // Toggle button
+
+  function makeToggleBtn(doc) {
+    var btn = doc.createElement('button');
+    btn.id = 'wr-views-toggle';
+    btn.className = 'wr-views-toggle';
+    btn.type = 'button';
+    btn.title = 'Sort by views';
+    btn.dataset.wrViewState = lastViewState;
+    btn.innerHTML = ICONS[lastViewState];
+
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      lastViewState = CYCLE[lastViewState];
+      btn.dataset.wrViewState = lastViewState;
+      btn.innerHTML = ICONS[lastViewState];
+      btn.title = lastViewState === 'neutral' ? 'Sort by views' : 'Sort by views: ' + lastViewState;
+      STATE.sortActive = lastViewState !== 'neutral';
+      STATE.sortDir = lastViewState === 'asc' ? 'asc' : 'desc';
+      scanAndSort(root.document);
+      if (STATE.sortActive) applySort(); else restoreOrder();
+    });
+
+    return btn;
+  }
+
+  function ensureToggle(doc) {
+    if (!doc) return;
+    var sortBar = doc.querySelector("[data-testid='sort-by-dropdown']");
     if (!sortBar) return;
-    var sortButton = findSortButton(sortBar);
-    if (!sortButton || sortButton.dataset.wrDropdownBound) return;
-    sortButton.dataset.wrDropdownBound = 'true';
-    sortButton.addEventListener('click', function () {
-      injectButton(doc);
-      watchDropdownOnce(sortBar, doc);
-    });
-  }
+    var sortRow = sortBar.parentElement;
+    if (!sortRow) return;
 
-  function watchDropdownOnce(sortBar, doc) {
-    if (!sortBar || !doc) return;
-    if (STATE.dropdownObserver) {
-      STATE.dropdownObserver.disconnect();
-      STATE.dropdownObserver = null;
+    var wrapper = doc.getElementById('wr-sort-wrapper');
+    if (wrapper && wrapper.contains(sortBar) && wrapper.contains(doc.getElementById('wr-views-toggle'))) return;
+
+    ensureStyles(doc);
+
+    if (wrapper && wrapper.parentElement) {
+      while (wrapper.firstChild) wrapper.parentElement.insertBefore(wrapper.firstChild, wrapper);
+      wrapper.parentElement.removeChild(wrapper);
     }
-    var dropdownList = getDropdownList(sortBar, doc);
-    if (dropdownList) {
-      injectButton(doc);
-      return;
-    }
-    STATE.dropdownObserver = new MutationObserver(function () {
-      var list = getDropdownList(sortBar, doc);
-      if (!list) return;
-      injectButton(doc);
-      if (STATE.dropdownObserver) {
-        STATE.dropdownObserver.disconnect();
-        STATE.dropdownObserver = null;
-      }
+
+    wrapper = doc.createElement('div');
+    wrapper.id = 'wr-sort-wrapper';
+    wrapper.style.cssText = 'display:inline-flex;align-items:center;';
+    sortRow.insertBefore(wrapper, sortBar);
+    wrapper.appendChild(sortBar);
+    wrapper.appendChild(makeToggleBtn(doc));
+  }
+
+  // Poll + observer
+
+  function startPoll(doc) {
+    if (STATE.pollTimer) return;
+    STATE.pollTimer = setInterval(function () {
+      ensureToggle(doc);
+    }, 200);
+  }
+
+  function observeCards(doc) {
+    if (STATE.cardObserver) return;
+    STATE.cardObserver = new MutationObserver(function (mutations) {
+      if (STATE.isSorting) return;
+      mutations.forEach(function (m) {
+        m.addedNodes.forEach(function (node) {
+          if (node && node.querySelectorAll) scanAndSort(node);
+        });
+      });
     });
-    STATE.dropdownObserver.observe(doc.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'hidden', 'aria-hidden']
-    });
+    STATE.cardObserver.observe(doc.body, { childList: true, subtree: true });
   }
 
-  function init(doc) {
-    scanAndMaybeSort(doc);
-    ensureViewsToggle(doc);
-    bootstrapViewsToggle(doc);
-    observe(doc);
-  }
+  // Init
 
-  var api = {
-    parseReadCount: parseReadCount,
-    findReadSpans: findReadSpans,
-    getCardElement: getCardElement,
-    getListContainer: getListContainer,
-    sortCards: sortCards
-  };
-
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = api;
-  }
+  var api = { parseReadCount: parseReadCount, findReadSpans: findReadSpans };
+  if (typeof module !== 'undefined') module.exports = api;
 
   if (root && root.document && !root.__wattpadViewsSorterLoaded) {
     root.__wattpadViewsSorterLoaded = true;
-    init(root.document);
+    observeCards(root.document);
+    scanAndSort(root.document);
+    ensureToggle(root.document);
+    startPoll(root.document);
   }
+
 })(typeof window !== 'undefined' ? window : null);

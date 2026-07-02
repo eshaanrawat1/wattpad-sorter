@@ -61,8 +61,6 @@ Sorting itself is pure DOM manipulation — `appendChild` on an existing node mo
 
 ## Development
 
----
-
 **To reload after local changes:**
 
 1. Go to `chrome://extensions`.

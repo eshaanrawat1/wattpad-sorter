@@ -38,7 +38,7 @@ Click the button to cycle. Note that sorting is applied on top of Wattpad's buil
 ## Example Usage
 
 Neutral Sort:
-![alt text](images/neutral-sort.png)
+![alt text](images/neutral.png)
 
 Desc Sort (most viewed first):
 ![alt text](images/desc.png)

@@ -16,6 +16,12 @@
 5. Open Wattpad and navigate to any page with story cards.
 6. Navigate to any Wattpad story list — the **⇅** button will appear next to the sort dropdown.
 
+**To reload after local development:**
+
+1. Go to `chrome://extensions`.
+2. Click the refresh icon on the Wattpad Views Sorter card.
+3. Hard-refresh Wattpad (`Cmd+Shift+R` / `Ctrl+Shift+R`).
+
 
 
 ## Features
@@ -54,16 +60,5 @@ Wattpad is a React SPA. Changing sort order or navigating between pages tears do
 
 The extension handles this with two independent background processes:
 
-- `MutationObserver` watches for newly added story cards as they lazy-load and indexes them immediately.
-- `setInterval` **at 200ms** checks whether the toggle button is still in the DOM and re-injects it if React has wiped it. This sidesteps React's multi-pass render cycle, where a mutation-based approach would lose a race against the second render pass.
-
-Sorting itself is pure DOM manipulation — `appendChild` on an existing node moves it rather than cloning it, so reordering the card list requires no node creation.
-
-## Development
-
-**To reload after local changes:**
-
-1. Go to `chrome://extensions`.
-2. Click the refresh icon on the Wattpad Views Sorter card.
-3. Hard-refresh Wattpad (`Cmd+Shift+R` / `Ctrl+Shift+R`).
-
+- `MutationObserver` watches for newly added story cards and indexes them immediately.
+- `setInterval` **every 200ms** checks whether the toggle button is still in the DOM and re-injects it if React has wiped it.

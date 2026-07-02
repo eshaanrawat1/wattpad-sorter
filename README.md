@@ -36,7 +36,7 @@ The toggle button cycles through three states:
 | ↑    | Ascending  | Least-read stories first                     |
 
 
-Click the button to cycle. Note that sorting is applied on top of Wattpad's built-in Hot and New pages. So if sorting by view count descending (most-read stories first), then this will only show stories that already exist in Hot or New, not every story with a given tag.
+Click the button to cycle. Note that sorting is applied on top of Wattpad's built-in Hot and New pages. So if sorting by view count descending (most-read stories first), then this will only show stories that already exist in Hot or New (whichever is currently active), not every story with a given tag.
 
 ## Example Usage
 

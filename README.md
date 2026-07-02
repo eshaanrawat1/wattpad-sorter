@@ -3,6 +3,7 @@
 `wattpad-sorter` is a Chrome extension that allows users to sort Wattpad stories by view count ascending or descending. Wattpad only supports viewing stories by "Hot" and "New". This extension parses view counts for each story directly from the DOM and reorders in place, with no API calls and no page reloads.
 
 
+**Disclaimer:** `wattpad-sorter` is an unofficial browser extension and is not affiliated with, endorsed by, or sponsored by Wattpad. It operates entirely on the client side by modifying the rendered page for personal use. No data is collected, transmitted, or stored.
 
 ## Install
 
@@ -43,8 +44,7 @@ Asc Sort (least viewed first):
 ![alt text](images/asc.png)
 
 ## Architecture
-
-> *TODO: architecture diagram*
+![alt text](images/arch.png)
 
 
 

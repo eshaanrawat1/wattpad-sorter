@@ -6,8 +6,6 @@
 
 ## Install
 
----
-
 **Requirements:** Chrome 88+ (Manifest V3)
 
 1. Clone this repository
@@ -20,8 +18,6 @@
 
 
 ## Features
-
----
 
 The toggle button cycles through three states:
 
@@ -49,8 +45,6 @@ Asc Sort (least viewed first):
 ## Architecture
 
 > *TODO: architecture diagram*
-
----
 
 
 

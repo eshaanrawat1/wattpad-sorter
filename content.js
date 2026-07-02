@@ -22,7 +22,6 @@
   var lastViewState = 'neutral';
 
   // Parsing
-
   function parseReadCount(text) {
     var match = text && String(text).match(READS_REGEX);
     if (!match) return null;
@@ -37,7 +36,6 @@
   }
 
   // DOM helpers
-
   function getCard(span) {
     return span.closest('li.FVPgf') || span.closest('li') || span.parentElement;
   }
@@ -47,7 +45,6 @@
   }
 
   // Indexing
-
   function indexCards(spans) {
     spans.forEach(function (span) {
       var count = parseReadCount(span.textContent);
@@ -64,7 +61,6 @@
   }
 
   // Sorting
-
   function applySort() {
     if (!STATE.listContainer || STATE.isSorting) return;
     var cards = Array.from(STATE.listContainer.querySelectorAll('[data-wr-reads]'));
@@ -98,7 +94,6 @@
   }
 
   // Styles
-
   function ensureStyles(doc) {
     if (doc.getElementById('wr-sort-styles')) return;
 
@@ -124,7 +119,6 @@
   }
 
   // Toggle button
-
   function makeToggleBtn(doc) {
     var btn = doc.createElement('button');
     btn.id = 'wr-views-toggle';
@@ -175,7 +169,6 @@
   }
 
   // Poll + observer
-
   function startPoll(doc) {
     if (STATE.pollTimer) return;
     STATE.pollTimer = setInterval(function () {
@@ -197,7 +190,6 @@
   }
 
   // Init
-
   var api = { parseReadCount: parseReadCount, findReadSpans: findReadSpans };
   if (typeof module !== 'undefined') module.exports = api;
 

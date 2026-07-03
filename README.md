@@ -51,14 +51,3 @@ Asc Sort (least viewed first):
 
 ## Architecture
 ![alt text](images/arch.png)
-
-
-
-## How it works
-
-Wattpad is a React SPA. Changing sort order or navigating between pages tears down and remounts parts of the DOM rather than doing a full page reload, which makes persistent UI injection tricky.
-
-The extension handles this with two independent background processes:
-
-- `MutationObserver` watches for newly added story cards and indexes them immediately.
-- `setInterval` **every 200ms** checks whether the toggle button is still in the DOM and re-injects it if React has wiped it.
